@@ -1,29 +1,47 @@
-# Antes de ejecutar docker-compose up, ejecuta:
-# bash check_github_follow.sh || exit 1
-# Si no sigues a https://github.com/jephersonRD, el entorno no se iniciará.
-services:
-  windows:
-    image: dockurr/windows
-    container_name: windows
-    environment:
-      VERSION: "10"
-      USERNAME: ${user}
-      PASSWORD: ${12345678}
-      RAM_SIZE: "10G"
-      CPU_CORES: "4"
-    cap_add:
-      - NET_ADMIN
-    ports:
-      - "8006:8006"
-      - "3389:3389/tcp"
-    volumes:
-      - /tmp/docker-data:/mnt/disco1
-      - windows-data:/mnt/windows-data
-    devices:
-      - "/dev/kvm:/dev/kvm"
-      - "/dev/net/tun:/dev/net/tun"
-    stop_grace_period: 2m
-    restart: always
+name: Windows High Performance RDP
 
-volumes:
-  windows-data:
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Menggunakan image Windows Server terbaru yang dialokasikan vCPU maksimum
+    runs-on: windows-latest
+
+    steps:
+    - name: Download & Install Tailscale
+      run: |
+        choco install tailscale -y
+
+    - name: Connect to Tailscale
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} --accept-routes
+
+    - name: Optimize System Performance
+      run: |
+        # Mengaktifkan Skema Daya Ultimate/High Performance
+        powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+        
+        # Mematikan efek visual Windows untuk menghemat alokasi CPU & RAM
+        Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "UserPreferencesMask" -Value ([byte[]](0x90,0x12,0x03,0x80,0x10,0x00,0x00,0x00))
+        
+        # Mengaktifkan akselerasi render RDP bawaan Windows
+        Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "bEnumerateGpu" -Value 1 -ErrorAction SilentlyContinue
+
+    - name: Enable Remote Desktop
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+    - name: Create RDP User
+      run: |
+        net user VirtualUser Pass12345678! /add
+        net localgroup administrators VirtualUser /add
+
+    - name: Keep Active
+      run: |
+        # Berjalan hingga batas maksimal durasi workflow (21000 detik / ~5.8 jam)
+        $seconds = 21000
+        Start-Sleep -Seconds $seconds
+        
