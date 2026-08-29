@@ -10,12 +10,11 @@ jobs:
     steps:
     - name: Download & Setup Ngrok
       run: |
-        Invoke-WebRequest https://bin.equinox.io/c/b3M4122/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-        Expand-Archive ngrok.zip
+        choco install ngrok -y
         
     - name: Connect Ngrok Account
       run: |
-        .\ngrok\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
         
     - name: Enable Remote Desktop
       run: |
@@ -30,10 +29,9 @@ jobs:
         
     - name: Start Ngrok Tunnel
       run: |
-        Start-Process Powershell -ArgumentList '-Noexit -Command ".\ngrok\ngrok.exe tcp 3389"'
+        Start-Process Powershell -ArgumentList '-Noexit -Command "ngrok tcp 3389"'
         
     - name: Keep Active (Never)
       run: |
         $seconds = Never
         Start-Sleep -Seconds $seconds
-        
