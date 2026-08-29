@@ -1,11 +1,10 @@
-name: Windows High Performance RDP
+name: Windows Max-CPU Performance RDP
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    # Menggunakan image Windows Server terbaru yang dialokasikan vCPU maksimum
     runs-on: windows-latest
 
     steps:
@@ -17,16 +16,18 @@ jobs:
       run: |
         & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} --accept-routes
 
-    - name: Optimize System Performance
+    - name: Extreme CPU & OS Tuning
       run: |
-        # Mengaktifkan Skema Daya Ultimate/High Performance
+        # 1. Paksa Skema Daya ke High / Ultimate Performance
         powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
         
-        # Mematikan efek visual Windows untuk menghemat alokasi CPU & RAM
+        # 2. Matikan Seluruh Animasi & Visual Windows (Murni Utamakan CPU Speed)
         Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "UserPreferencesMask" -Value ([byte[]](0x90,0x12,0x03,0x80,0x10,0x00,0x00,0x00))
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2
         
-        # Mengaktifkan akselerasi render RDP bawaan Windows
+        # 3. Optimasi Prioritas Thread RDP & CPU Resource Allocation
         Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "bEnumerateGpu" -Value 1 -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name "Win32PrioritySeparation" -Value 38
 
     - name: Enable Remote Desktop
       run: |
@@ -39,9 +40,9 @@ jobs:
         net user VirtualUser Pass12345678! /add
         net localgroup administrators VirtualUser /add
 
-    - name: Keep Active
+    - name: Keep Active (Batas Maksimal Runner)
       run: |
-        # Berjalan hingga batas maksimal durasi workflow (21000 detik / ~5.8 jam)
+        # Berjalan hingga batas limit host (~5.8 jam)
         $seconds = 21000
         Start-Sleep -Seconds $seconds
         
