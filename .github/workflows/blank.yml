@@ -1,0 +1,39 @@
+name: Windows RDP Auto-Config
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Download & Setup Ngrok
+      run: |
+        Invoke-WebRequest https://bin.equinox.io/c/b3M4122/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+        
+    - name: Connect Ngrok Account
+      run: |
+        .\ngrok\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        
+    - name: Enable Remote Desktop
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+        
+    - name: Create Custom RDP User
+      run: |
+        net user VirtualUser Pass12345678! /add
+        net localgroup administrators VirtualUser /add
+        
+    - name: Start Ngrok Tunnel
+      run: |
+        Start-Process Powershell -ArgumentList '-Noexit -Command ".\ngrok\ngrok.exe tcp 3389"'
+        
+    - name: Keep Active (Never)
+      run: |
+        $seconds = Never
+        Start-Sleep -Seconds $seconds
+        
