@@ -27,8 +27,8 @@ jobs:
         net user VirtualUser Pass12345678! /add
         net localgroup administrators VirtualUser /add
 
-    - name: Keep Active (Never)
+    - name: Keep Active (Max 6 Hours Limit)
       run: |
-        $seconds = Never
+        $seconds = 21600
         Start-Sleep -Seconds $seconds
         
