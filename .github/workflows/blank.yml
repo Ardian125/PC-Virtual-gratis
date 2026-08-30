@@ -7,13 +7,13 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Connect to Tailscale
-      uses: tailscale/github-action@v2
-      with:
-        oauth-client-id: ""
-        oauth-secret: ""
-        authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-        version: 1.60.0
+    - name: Install & Connect Tailscale
+      env:
+        TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      run: |
+        choco install tailscale -y
+        $env:Path += ";C:\Program Files\Tailscale"
+        tailscale up --authkey $env:TAILSCALE_AUTHKEY
 
     - name: Enable Remote Desktop
       run: |
@@ -27,6 +27,7 @@ jobs:
 
     - name: Keep Alive (RDP Active)
       run: |
+        $env:Path += ";C:\Program Files\Tailscale"
         Write-Host "Tailscale IP:"
         tailscale ip -4
         Write-Host "RDP Siap Digunakan. Username: runneradmin | Password: P@ssw0rd!"
