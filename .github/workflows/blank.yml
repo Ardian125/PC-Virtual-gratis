@@ -1,5 +1,4 @@
-#.github/workflows/main.yml
-name: Windows - Ngrok
+name: Windows - Tailscale RDP
 
 on: workflow_dispatch
 
@@ -8,14 +7,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+  TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
   RDP_USER: admin
   RDP_PASS: p@ssw0rd!
 
 jobs:
-  ngrok-rdp:
+  tailscale-rdp:
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 9999
 
     steps:
     - name: Setup Windows Remote Desktop
@@ -42,69 +41,42 @@ jobs:
         w32tm /config /manualpeerlist:"time.windows.com" /syncfromflags:manual /reliable:yes /update *>$null
         
         diskperf -Y *>$null
-        
-        Get-ChildItem -Path "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path "C:\Windows\Temp" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        
+        "$env:TEMP\*" | Remove-Item -Recurse -Force
+        "C:\Windows\Temp\*" | Remove-Item -Recurse -Force
+        "C:\Windows\Prefetch\*" | Remove-Item -Recurse -Force
+        "C:\Users\Public\Desktop\*" | Remove-Item -Recurse -Force
+        (New-Object -ComObject Shell.Application).Namespace(0xA).Items() | %{Remove-Item $_.Path -Recurse -Confirm:$false}
         (New-Object -ComObject Shell.Application).minimizeall()
 
-    - name: Download Ngrok
+    - name: Connect to Tailscale
+      uses: tailscale/github-action@v2
+      with:
+        oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+        oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+        tags: tag:ci
+
+    - name: Display Connection Info
       run: |
-        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-        Expand-Archive ngrok.zip -DestinationPath .
-
-    - name: Start Ngrok & Display Info
-      run: |
-        if (-not $env:NGROK_AUTH_TOKEN) {
-          throw "ERROR: NGROK_AUTH_TOKEN tidak ditemukan di GitHub Secrets!"
-        }
-
-        # Jalankan ngrok langsung dengan authtoken
-        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --authtoken $env:NGROK_AUTH_TOKEN" -WindowStyle Hidden
-        
-        $ngrokUrl = $null
-        $attempts = 0
-
-        while (-not $ngrokUrl -and $attempts -lt 12) {
-          Start-Sleep -Seconds 5
-          $attempts++
-          try {
-            $tunnels = Invoke-RestMethod -Uri http://localhost:4040/api/tunnels
-            $ngrokUrl = ($tunnels.tunnels | Where-Object { $_.proto -eq 'tcp' }).public_url
-          } catch {
-            Write-Host "Menunggu Ngrok terhubung... (Coba ke-$attempts)"
-          }
-        }
-
-        if ($ngrokUrl) {
-          $cleanUrl = $ngrokUrl -replace "^tcp://", ""
-          Write-Host "=========================================="
-          Write-Host "RDP BERHASIL DIAKTIFKAN!"
-          Write-Host "URL Remote : $cleanUrl"
-          Write-Host "Username   : $env:RDP_USER"
-          Write-Host "Password   : $env:RDP_PASS"
-          Write-Host "=========================================="
-        } else {
-          throw "Gagal mendapatkan URL dari Ngrok. Periksa apakah NGROK_AUTH_TOKEN Anda valid."
-        }
+        $ip = (tailscale ip -4).Trim()
+        Write-Host "=========================================="
+        Write-Host "Tailscale RDP Connected Successfully!"
+        Write-Host "Connect to RDP IP : $ip"
+        Write-Host "Username          : $env:RDP_USER"
+        Write-Host "Password          : $env:RDP_PASS"
+        Write-Host "=========================================="
 
     - name: Keep Alive
       run: |
-        $duration = 21600  # 6 jam
-        $interval = 300
+        $duration = 21600  # 6 jam (maksimal durasi GitHub Actions)
+        $interval = 300    # Cek setiap 5 menit
         $endTime = (Get-Date).AddSeconds($duration)
 
         while ((Get-Date) -lt $endTime) {
-          $ngrokProcess = Get-Process -Name "ngrok" -ErrorAction SilentlyContinue
-          if (-not $ngrokProcess) {
-            Write-Host "Proses Ngrok terhenti. Menghentikan workflow."
+          $tsProcess = Get-Process -Name "tailscaled" -ErrorAction SilentlyContinue
+          if (-not $tsProcess) {
+            Write-Host "Tailscale process stopped. Exiting workflow."
             exit 1
           }
           Start-Sleep -Seconds $interval
         }
-
-    - name: Cleanup
-      if: always()
-      run: |
-        Get-Process -Name "ngrok" -ErrorAction SilentlyContinue | Stop-Process -Force
         
