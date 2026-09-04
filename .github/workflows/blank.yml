@@ -7,6 +7,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
   RDP_USER: admin
   RDP_PASS: p@ssw0rd!
 
@@ -41,22 +42,26 @@ jobs:
         
         diskperf -Y *>$null
         
-        # Penanganan pembersihan temp agar tidak gagal saat ada file yang dikunci sistem
         Get-ChildItem -Path "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         Get-ChildItem -Path "C:\Windows\Temp" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         
         (New-Object -ComObject Shell.Application).minimizeall()
 
-    - name: Connect to Tailscale
-      uses: tailscale/github-action@v2
-      with:
-        oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-        oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-        tags: tag:ci
+    - name: Install and Connect Tailscale
+      run: |
+        if (-not $env:TAILSCALE_AUTHKEY) {
+          throw "ERROR: TAILSCALE_AUTHKEY tidak ditemukan di GitHub Secrets!"
+        }
+
+        # Install Tailscale lewat Chocolatey
+        choco install tailscale -y
+
+        # Jalankan koneksi Tailscale
+        & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTHKEY --unattended
 
     - name: Display Connection Info
       run: |
-        $ip = (tailscale ip -4).Trim()
+        $ip = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
         Write-Host "=========================================="
         Write-Host "Tailscale RDP Connected Successfully!"
         Write-Host "Connect to RDP IP : $ip"
