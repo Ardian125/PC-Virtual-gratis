@@ -15,7 +15,7 @@ env:
 jobs:
   ngrok-rdp:
     runs-on: windows-latest
-    timeout-minutes: 999999999999
+    timeout-minutes: False
 
     steps:
     - name: Setup Windows Remote Desktop
@@ -43,97 +43,68 @@ jobs:
         
         diskperf -Y *>$null
         
-        # Abaikan error jika ada file temp yang sedang terkunci oleh proses sistem
         Get-ChildItem -Path "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         Get-ChildItem -Path "C:\Windows\Temp" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         
         (New-Object -ComObject Shell.Application).minimizeall()
-        
-    - name: Install and Configure Ngrok
+
+    - name: Download Ngrok
       run: |
         Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-        Expand-Archive ngrok.zip -DestinationPath .\ngrok
-        .\ngrok\ngrok.exe authtoken $env:NGROK_AUTH_TOKEN
+        Expand-Archive ngrok.zip -DestinationPath .
 
-    - name: Start Ngrok Tunnel
+    - name: Start Ngrok & Display Info
       run: |
-        $maxRetries = 3
-        $retryCount = 0
-        $success = $false
-
-        while (-not $success -and $retryCount -lt $maxRetries) {
-          Start-Process -FilePath ".\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-
-          $attempts = 0
-          $maxAttempts = 10
-          $ngrokUrl = $null
-
-          while (-not $ngrokUrl -and $attempts -lt $maxAttempts) {
-            Start-Sleep -Seconds 5
-            $attempts++
-            
-            try {
-              $tunnels = Invoke-RestMethod -Uri http://localhost:4040/api/tunnels
-              $ngrokUrl = ($tunnels.tunnels | Where-Object { $_.proto -eq 'tcp' }).public_url
-            } catch {
-              Write-Host "Attempt $attempts`: Waiting for Ngrok to start..."
-            }
-          }
-
-          if (-not $ngrokUrl) {
-            Write-Host "Failed to retrieve Ngrok URL after $maxAttempts attempts."
-            $retryCount++
-            continue
-          }
-
-          $ngrokUrl = $ngrokUrl -replace "^tcp://", ""
-          $address, $port = $ngrokUrl -split ":" 
-          
-          $testResult = Test-NetConnection -ComputerName $address -Port $port
-          if ($testResult.TcpTestSucceeded) {
-            $success = $true
-            $remoteAddress = $testResult.RemoteAddress.IPAddressToString
-            Write-Host "RDP Connection Details"
-            Write-Host "URL: $remoteAddress`:$port"
-            Write-Host "Username: $env:RDP_USER"
-            Write-Host "Password: $env:RDP_PASS"
-            
-          } else {
-            Write-Host "Connection test failed. Retrying..."
-            Get-Process ngrok | Stop-Process -Force
-            $retryCount++
-            Start-Sleep -Seconds 5
-          }
+        if (-not $env:NGROK_AUTH_TOKEN) {
+          throw "ERROR: NGROK_AUTH_TOKEN tidak ditemukan di GitHub Secrets!"
         }
 
-        if (-not $success) {
-          throw "Failed to establish a working Ngrok tunnel after $maxRetries attempts."
-        }
+        # Jalankan ngrok langsung dengan authtoken
+        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --authtoken $env:NGROK_AUTH_TOKEN" -WindowStyle Hidden
         
+        $ngrokUrl = $null
+        $attempts = 0
+
+        while (-not $ngrokUrl -and $attempts -lt 12) {
+          Start-Sleep -Seconds 5
+          $attempts++
+          try {
+            $tunnels = Invoke-RestMethod -Uri http://localhost:4040/api/tunnels
+            $ngrokUrl = ($tunnels.tunnels | Where-Object { $_.proto -eq 'tcp' }).public_url
+          } catch {
+            Write-Host "Menunggu Ngrok terhubung... (Coba ke-$attempts)"
+          }
+        }
+
+        if ($ngrokUrl) {
+          $cleanUrl = $ngrokUrl -replace "^tcp://", ""
+          Write-Host "=========================================="
+          Write-Host "RDP BERHASIL DIAKTIFKAN!"
+          Write-Host "URL Remote : $cleanUrl"
+          Write-Host "Username   : $env:RDP_USER"
+          Write-Host "Password   : $env:RDP_PASS"
+          Write-Host "=========================================="
+        } else {
+          throw "Gagal mendapatkan URL dari Ngrok. Periksa apakah NGROK_AUTH_TOKEN Anda valid."
+        }
+
     - name: Keep Alive
       run: |
-        $duration = 21600  # 6 hours in seconds
-        $interval = 300    # Check every 5 minutes
+        $duration = 21600  # 6 jam
+        $interval = 300
         $endTime = (Get-Date).AddSeconds($duration)
 
         while ((Get-Date) -lt $endTime) {
           $ngrokProcess = Get-Process -Name "ngrok" -ErrorAction SilentlyContinue
           if (-not $ngrokProcess) {
-            Write-Host "Ngrok process not found. Exiting workflow."
+            Write-Host "Proses Ngrok terhenti. Menghentikan workflow."
             exit 1
           }
-
           Start-Sleep -Seconds $interval
         }
 
     - name: Cleanup
       if: always()
       run: |
-        $ngrokProcess = Get-Process -Name "ngrok" -ErrorAction SilentlyContinue
-        if ($ngrokProcess) {
-          Write-Host "Terminating Ngrok process..."
-          $ngrokProcess | Stop-Process -Force
-        }
-        
-        Write-Host "Cleanup complete."
+        Get-Process -Name "ngrok" -ErrorAction SilentlyContinue | Stop-Process -Force
         
