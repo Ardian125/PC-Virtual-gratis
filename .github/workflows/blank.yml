@@ -7,7 +7,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
   RDP_USER: admin
   RDP_PASS: p@ssw0rd!
 
@@ -41,11 +40,11 @@ jobs:
         w32tm /config /manualpeerlist:"time.windows.com" /syncfromflags:manual /reliable:yes /update *>$null
         
         diskperf -Y *>$null
-        "$env:TEMP\*" | Remove-Item -Recurse -Force
-        "C:\Windows\Temp\*" | Remove-Item -Recurse -Force
-        "C:\Windows\Prefetch\*" | Remove-Item -Recurse -Force
-        "C:\Users\Public\Desktop\*" | Remove-Item -Recurse -Force
-        (New-Object -ComObject Shell.Application).Namespace(0xA).Items() | %{Remove-Item $_.Path -Recurse -Confirm:$false}
+        
+        # Penanganan pembersihan temp agar tidak gagal saat ada file yang dikunci sistem
+        Get-ChildItem -Path "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path "C:\Windows\Temp" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        
         (New-Object -ComObject Shell.Application).minimizeall()
 
     - name: Connect to Tailscale
@@ -67,7 +66,7 @@ jobs:
 
     - name: Keep Alive
       run: |
-        $duration = 21600  # 6 jam (maksimal durasi GitHub Actions)
+        $duration = 21600  # 6 jam
         $interval = 300    # Cek setiap 5 menit
         $endTime = (Get-Date).AddSeconds($duration)
 
