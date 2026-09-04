@@ -15,7 +15,7 @@ env:
 jobs:
   ngrok-rdp:
     runs-on: windows-latest
-    timeout-minutes: False
+    timeout-minutes: 360
 
     steps:
     - name: Setup Windows Remote Desktop
