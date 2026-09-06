@@ -1,21 +1,20 @@
-name: RDP Windows High Performance (No Ribet)
+name: RDP Windows High Performance
 
 on:
   workflow_dispatch:
     inputs:
       tailscale_key:
-        description: 'Tempelkan Auth Key Tailscale di sini (tskey-auth-...)'
+        description: 'Tempelkan Auth Key Tailscale (tskey-auth-...)'
         required: true
         type: string
 
 jobs:
   rdp:
-    runs-on: windows-2022
+    runs-on: windows-latest
     steps:
-      - name: Windows High Performance Tweaks & RDP Setup
+      - name: High Performance & RDP Setup
         shell: powershell
         run: |
-          Write-Host "[1/3] Mengaktifkan Mode High Performance & RDP..."
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2
           
@@ -31,28 +30,21 @@ jobs:
       - name: Install & Connect Tailscale
         shell: powershell
         run: |
-          Write-Host "[2/3] Menginstall Tailscale via Winget..."
-          $key = "${{ github.event.inputs.tailscale_key }}"
-          
-          if ([string]::IsNullOrWhiteSpace($key)) {
-            Write-Error "ERROR: Auth Key Tailscale belum dimasukkan saat Run Workflow!"
-            exit 1
-          }
+          $key = "${{ github.event.inputs.tailscale_key }}".Trim()
+          if (-not $key) { Write-Error "Auth Key wajib diisi!"; exit 1 }
 
-          # Install resmi via Winget
-          winget install --id Tailscale.Tailscale --exact --silent --accept-source-agreements --accept-package-agreements
+          choco install tailscale -y --no-progress
           
           $env:Path += ";C:\Program Files\Tailscale"
           Start-Sleep -Seconds 5
           
-          Write-Host "Menghubungkan ke Tailscale..."
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$key" --unattended --accept-routes
 
-      - name: Keep Alive (RDP Active)
+      - name: Keep Alive
         shell: powershell
         run: |
           Write-Host "=========================================="
-          Write-Host " RDP WIN 10 HIGH PERFORMANCE SIAP DIPAKAI "
+          Write-Host " RDP SIAP DIPAKAI"
           Write-Host " Username : runneradmin"
           Write-Host " Password : PasswordRDP123!"
           Write-Host "=========================================="
@@ -60,5 +52,4 @@ jobs:
           while ($i -lt 360) {
             Start-Sleep -Seconds 60
             $i++
-            Write-Host "Status: RDP Berjalan ($i menit)"
           }
