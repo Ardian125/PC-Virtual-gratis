@@ -16,28 +16,22 @@ jobs:
         shell: powershell
         run: |
           Write-Host "[1/3] Mengaktifkan Mode High Performance & RDP..."
-          # Set Power Plan High Performance
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          
-          # Matikan Animasi & Visual FX (Super Ringan & Anti Lag)
           Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2
           
-          # Uncap RDP ke 60 FPS
           New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT' -Name 'Terminal Services' -Force -ErrorAction SilentlyContinue | Out-Null
           New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "DWMFRAMEINTERVAL" -PropertyType DWord -Value 15 -Force | Out-Null
           
-          # Aktifkan RDP & Firewall
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
           
-          # Set Password User Administrator
           $admin = [ADSI]"WinNT://./runneradmin,user"
           $admin.SetPassword("PasswordRDP123!")
 
-      - name: Install & Connect Tailscale (Super Cepat)
+      - name: Install & Connect Tailscale
         shell: powershell
         run: |
-          Write-Host "[2/3] Menginstall Tailscale..."
+          Write-Host "[2/3] Menginstall Tailscale via Winget..."
           $key = "${{ github.event.inputs.tailscale_key }}"
           
           if ([string]::IsNullOrWhiteSpace($key)) {
@@ -45,13 +39,11 @@ jobs:
             exit 1
           }
 
-          # Direct Download Installer (~10 Detik)
-          $msi = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -OutFile $msi
-          Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
+          # Install resmi via Winget
+          winget install --id Tailscale.Tailscale --exact --silent --accept-source-agreements --accept-package-agreements
           
           $env:Path += ";C:\Program Files\Tailscale"
-          Start-Sleep -Seconds 3
+          Start-Sleep -Seconds 5
           
           Write-Host "Menghubungkan ke Tailscale..."
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$key" --unattended --accept-routes
@@ -70,4 +62,3 @@ jobs:
             $i++
             Write-Host "Status: RDP Berjalan ($i menit)"
           }
-          
