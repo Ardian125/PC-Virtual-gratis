@@ -7,10 +7,12 @@ jobs:
   rdp:
     runs-on: windows-latest
     steps:
-      - name: Setup Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+      - name: Install & Connect Tailscale
+        shell: powershell
+        run: |
+          choco install tailscale -y
+          Start-Sleep -Seconds 5
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --unattended
 
       - name: Enable RDP & Configure User
         shell: powershell
@@ -29,4 +31,3 @@ jobs:
             Start-Sleep -Seconds 60
             $i++
           }
-          
