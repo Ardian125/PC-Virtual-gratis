@@ -1,59 +1,73 @@
-name: GitHub Actions RDP High Performance
+name: RDP Windows High Performance (No Ribet)
 
 on:
   workflow_dispatch:
+    inputs:
+      tailscale_key:
+        description: 'Tempelkan Auth Key Tailscale di sini (tskey-auth-...)'
+        required: true
+        type: string
 
 jobs:
   rdp:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
-      - name: High Performance Optimization
+      - name: Windows High Performance Tweaks & RDP Setup
         shell: powershell
         run: |
-          # Set Power Plan to High Performance
+          Write-Host "[1/3] Mengaktifkan Mode High Performance & RDP..."
+          # Set Power Plan High Performance
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           
-          # Matikan Animasi & Visual FX (Responsif & Anti Lag)
+          # Matikan Animasi & Visual FX (Super Ringan & Anti Lag)
           Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2
           
-          # Tweak RDP Latency & Uncap 60 FPS
-          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT' -Name 'Terminal Services' -Force | Out-Null
+          # Uncap RDP ke 60 FPS
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT' -Name 'Terminal Services' -Force -ErrorAction SilentlyContinue | Out-Null
           New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "DWMFRAMEINTERVAL" -PropertyType DWord -Value 15 -Force | Out-Null
           
-          # Buka Akses RDP & Firewall
+          # Aktifkan RDP & Firewall
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-
-      - name: Install & Start Tailscale
-        shell: powershell
-        env:
-          TS_KEY: ${{ secrets.TAILSCALE_AUTHKEY }}
-        run: |
-          # Install Tailscale
-          choco install tailscale -y --no-progress
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
           
-          # Force Refresh PATH & Start Daemon Service
-          $env:Path += ";C:\Program Files\Tailscale"
-          Get-Service -Name "Tailscale" | Set-Service -StartupType Automatic
-          Start-Service -Name "Tailscale" -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 5
-          
-          # Connect Tailscale
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --unattended --accept-routes
-
-      - name: Setup User Account
-        shell: powershell
-        run: |
+          # Set Password User Administrator
           $admin = [ADSI]"WinNT://./runneradmin,user"
           $admin.SetPassword("PasswordRDP123!")
 
-      - name: Keep Alive Loop
+      - name: Install & Connect Tailscale (Super Cepat)
         shell: powershell
         run: |
-          Write-Host "RDP Siap Dihubungkan!"
+          Write-Host "[2/3] Menginstall Tailscale..."
+          $key = "${{ github.event.inputs.tailscale_key }}"
+          
+          if ([string]::IsNullOrWhiteSpace($key)) {
+            Write-Error "ERROR: Auth Key Tailscale belum dimasukkan saat Run Workflow!"
+            exit 1
+          }
+
+          # Direct Download Installer (~10 Detik)
+          $msi = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -OutFile $msi
+          Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          Start-Sleep -Seconds 3
+          
+          Write-Host "Menghubungkan ke Tailscale..."
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$key" --unattended --accept-routes
+
+      - name: Keep Alive (RDP Active)
+        shell: powershell
+        run: |
+          Write-Host "=========================================="
+          Write-Host " RDP WIN 10 HIGH PERFORMANCE SIAP DIPAKAI "
+          Write-Host " Username : runneradmin"
+          Write-Host " Password : PasswordRDP123!"
+          Write-Host "=========================================="
           $i = 0
           while ($i -lt 360) {
             Start-Sleep -Seconds 60
             $i++
+            Write-Host "Status: RDP Berjalan ($i menit)"
           }
           
