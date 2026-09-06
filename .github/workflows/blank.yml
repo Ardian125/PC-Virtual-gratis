@@ -12,9 +12,13 @@ jobs:
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTHKEY)) {
+            Write-Error "Secret TAILSCALE_AUTHKEY tidak ditemukan atau kosong di Settings GitHub!"
+            exit 1
+          }
           choco install tailscale -y
           $env:Path += ";C:\Program Files\Tailscale"
-          tailscale up --authkey $env:TAILSCALE_AUTHKEY --unattended
+          tailscale up --authkey "$env:TAILSCALE_AUTHKEY" --unattended
 
       - name: Enable RDP & Configure User
         shell: powershell
@@ -33,3 +37,4 @@ jobs:
             Start-Sleep -Seconds 60
             $i++
           }
+          
