@@ -1,4 +1,4 @@
-name: GitHub Actions RDP Tailscale
+name: GitHub Actions RDP High Performance
 
 on:
   workflow_dispatch:
@@ -7,31 +7,50 @@ jobs:
   rdp:
     runs-on: windows-latest
     steps:
-      - name: Install & Connect Tailscale
-        shell: powershell
-        env:
-          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTHKEY)) {
-            Write-Error "Secret TAILSCALE_AUTHKEY tidak ditemukan atau kosong di Settings GitHub!"
-            exit 1
-          }
-          choco install tailscale -y
-          $env:Path += ";C:\Program Files\Tailscale"
-          tailscale up --authkey "$env:TAILSCALE_AUTHKEY" --unattended
-
-      - name: Enable RDP & Configure User
+      - name: High Performance Optimization
         shell: powershell
         run: |
+          # Set Power Plan to High Performance
+          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          
+          # Matikan Animasi & Visual FX (Responsif & Anti Lag)
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2
+          
+          # Tweak RDP Latency & Uncap 60 FPS
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT' -Name 'Terminal Services' -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "DWMFRAMEINTERVAL" -PropertyType DWord -Value 15 -Force | Out-Null
+          
+          # Buka Akses RDP & Firewall
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Install & Start Tailscale
+        shell: powershell
+        env:
+          TS_KEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          # Install Tailscale
+          choco install tailscale -y --no-progress
           
+          # Force Refresh PATH & Start Daemon Service
+          $env:Path += ";C:\Program Files\Tailscale"
+          Get-Service -Name "Tailscale" | Set-Service -StartupType Automatic
+          Start-Service -Name "Tailscale" -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+          
+          # Connect Tailscale
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --unattended --accept-routes
+
+      - name: Setup User Account
+        shell: powershell
+        run: |
           $admin = [ADSI]"WinNT://./runneradmin,user"
           $admin.SetPassword("PasswordRDP123!")
 
-      - name: Keep Alive
+      - name: Keep Alive Loop
         shell: powershell
         run: |
+          Write-Host "RDP Siap Dihubungkan!"
           $i = 0
           while ($i -lt 360) {
             Start-Sleep -Seconds 60
