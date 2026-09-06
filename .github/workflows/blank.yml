@@ -9,10 +9,12 @@ jobs:
     steps:
       - name: Install & Connect Tailscale
         shell: powershell
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           choco install tailscale -y
-          Start-Sleep -Seconds 5
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --unattended
+          $env:Path += ";C:\Program Files\Tailscale"
+          tailscale up --authkey $env:TAILSCALE_AUTHKEY --unattended
 
       - name: Enable RDP & Configure User
         shell: powershell
