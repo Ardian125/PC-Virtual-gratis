@@ -1,86 +1,32 @@
-name: Windows - Tailscale RDP
+name: GitHub Actions RDP Tailscale
 
-on: workflow_dispatch
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
-  RDP_USER: admin
-  RDP_PASS: p@ssw0rd!
+on:
+  workflow_dispatch:
 
 jobs:
-  tailscale-rdp:
+  rdp:
     runs-on: windows-latest
-    timeout-minutes: 9999
-
     steps:
-    - name: Setup Windows Remote Desktop
-      run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-        if ("$env:RDP_USER" -eq "runneradmin") {
-          Write-Host "Warning: Using default user account!"
-          Set-LocalUser -Name $env:RDP_USER -Password (ConvertTo-SecureString "$env:RDP_PASS" -AsPlainText -Force)
-        } else {
-          New-LocalUser -Name "$env:RDP_USER" -Password (ConvertTo-SecureString "$env:RDP_PASS" -AsPlainText -Force) *>$null
-          Add-LocalGroupMember -Group "Administrators" -Member "$env:RDP_USER"
-          Enable-LocalUser -Name "$env:RDP_USER"
-        }
-        
-        icacls "C:\Windows\Temp" /grant "$env:RDP_USER`:F" *>$null
-        icacls "C:\Windows\installer" /grant "$env:RDP_USER`:F" *>$null
+      - name: Enable RDP & Configure User
+        shell: powershell
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          $admin = [ADSI]"WinNT://./runneradmin,user"
+          $admin.SetPassword("PasswordRDP123!")
 
-        Set-Service -Name "W32Time" -StartupType Automatic -ErrorAction Stop *>$null
-        Restart-Service W32Time *>$null
-        w32tm /resync /force *>$null
-        w32tm /config /manualpeerlist:"time.windows.com" /syncfromflags:manual /reliable:yes /update *>$null
-        
-        diskperf -Y *>$null
-        
-        Get-ChildItem -Path "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path "C:\Windows\Temp" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        
-        (New-Object -ComObject Shell.Application).minimizeall()
-
-    - name: Install and Connect Tailscale
-      run: |
-        if (-not $env:TAILSCALE_AUTHKEY) {
-          throw "ERROR: TAILSCALE_AUTHKEY tidak ditemukan di GitHub Secrets!"
-        }
-
-        # Install Tailscale lewat Chocolatey
-        choco install tailscale -y
-
-        # Jalankan koneksi Tailscale
-        & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTHKEY --unattended
-
-    - name: Display Connection Info
-      run: |
-        $ip = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
-        Write-Host "=========================================="
-        Write-Host "Tailscale RDP Connected Successfully!"
-        Write-Host "Connect to RDP IP : $ip"
-        Write-Host "Username          : $env:RDP_USER"
-        Write-Host "Password          : $env:RDP_PASS"
-        Write-Host "=========================================="
-
-    - name: Keep Alive
-      run: |
-        $duration = 21600  # 6 jam
-        $interval = 300    # Cek setiap 5 menit
-        $endTime = (Get-Date).AddSeconds($duration)
-
-        while ((Get-Date) -lt $endTime) {
-          $tsProcess = Get-Process -Name "tailscaled" -ErrorAction SilentlyContinue
-          if (-not $tsProcess) {
-            Write-Host "Tailscale process stopped. Exiting workflow."
-            exit 1
+      - name: Keep Alive
+        shell: powershell
+        run: |
+          $i = 0
+          while ($i -lt 360) {
+            Start-Sleep -Seconds 60
+            $i++
           }
-          Start-Sleep -Seconds $interval
-        }
-        
+          
